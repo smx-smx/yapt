@@ -5,8 +5,18 @@ import java.nio.charset.StandardCharsets
 import java.util.regex.Pattern
 
 enum class CmAccess(val str:String) {
-    READ_ONLY("readOnly"),
-    READ_WRITE("readWrite")
+    READ_ONLY("ro"),
+    READ_WRITE("rw");
+
+    companion object {
+        fun fromString(value: String): CmAccess? {
+            return when(value){
+                READ_ONLY.str -> READ_ONLY
+                READ_WRITE.str -> READ_WRITE
+                else -> null
+            }
+        }
+    }
 }
 
 enum class CmType(val str:String){
@@ -15,11 +25,27 @@ enum class CmType(val str:String){
     UINT("unsignedInt"),
     LONG("long"),
     STRING("string"),
-    DATETIME("dateTime")
+    ALIAS("Alias"),
+    OPAQUE("?"),
+    DATETIME("dateTime");
+
+    companion object {
+        fun fromString(value: String): CmType? {
+            return when (value) {
+                BOOLEAN.str -> BOOLEAN
+                INT.str -> INT
+                UINT.str -> UINT
+                LONG.str -> LONG
+                STRING.str -> STRING
+                DATETIME.str -> DATETIME
+                else -> null
+            }
+        }
+    }
 }
 
-class CmModel : HashMap<String, String?>() {
-    val isReadOnly get() = this["access"]?.equals("ro") ?: false
+class CmModel(val items:HashMap<String, String?> = HashMap()){
+    operator fun get(key: String) = items[key]
 }
 
 class CmClientSession(private val session: YapsSession) : AutoCloseable {
@@ -79,12 +105,17 @@ class CmClientSession(private val session: YapsSession) : AutoCloseable {
             m.group(2)
                 .replace("\t", "").trimEnd()
                 .lines()
-                .map { it.split(':', limit = 2) }
+                .map { it.split(':') }
                 .filter { it.isNotEmpty() }
-                .associateTo(model) {
+                .associateTo(model.items) {
                     when(it.size){
-                        2 -> Pair(it[0], it[1])
-                        else -> Pair(it[0], null)
+                        // foo
+                        1 -> Pair(it[0], null)
+                        // FIXME: this doesn't handle multiple attributes correctly
+                        // e.g.
+                        // type:string:size:0..256
+                        // pathref:targetType:6
+                        else -> Pair(it[0], it[1])
                     }
                 }
 

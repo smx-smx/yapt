@@ -14,7 +14,6 @@ import javafx.util.Callback
 import java.net.URL
 import java.util.*
 import javax.inject.Inject
-import kotlin.collections.ArrayList
 import kotlin.collections.HashMap
 import kotlin.concurrent.thread
 
@@ -32,18 +31,24 @@ data class CmModelItem(val path: String, val model: CmModel){
             tmp.substring(lastDot + 1)
     }
 
+    val access: CmAccess? get() = model["access"]?.let { CmAccess.fromString(it) }
+    val type: CmType? get() = model["type"]?.let { CmType.fromString(it) }
 
-    val isReadOnly: Boolean get() = model["access"]?.equals("ro") ?: false
     val isObject: Boolean get() = path.endsWith('.')
     val isProperty: Boolean get() = !path.endsWith('.')
 }
 
 typealias CmModelTreeNode = MutableMap.MutableEntry<String, CmModel>
 
-class CmModelTree : HashMap<String, CmModel>() {
-    val isLeaf get() = this.none { it.key.endsWith(".") }
-    val objects get() = this.entries.filter { it.key.endsWith(".") }
-    val properties get() = this.entries.filter { !it.key.endsWith(".") }
+class CmModelTree(val items:HashMap<String, CmModel> = HashMap()) {
+    operator fun get(key: String) = items[key]
+    operator fun set(key: String, value: CmModel){
+        items[key] = value
+    }
+
+    val isLeaf get() = items.none { it.key.endsWith(".") }
+    val objects get() = items.entries.filter { it.key.endsWith(".") }
+    val properties get() = items.entries.filter { !it.key.endsWith(".") }
 
     private fun filterByDepth(
         items: List<CmModelTreeNode>,
@@ -100,7 +105,7 @@ class ConfigTreeCell(private val sessMan:YapsSessionManager) : TreeCell<ConfigCe
     lateinit var valueBox:HBox
 
     @FXML
-    lateinit var value:TextField
+    lateinit var value: TextField
 
     @FXML
     lateinit var updateValue:Button
@@ -146,9 +151,8 @@ class ConfigTreeCell(private val sessMan:YapsSessionManager) : TreeCell<ConfigCe
         } else {
             if(item.modelItem != null){
                 val m = item.modelItem
-                valueBox.isDisable = m.isReadOnly
+                valueBox.isDisable = m.access == CmAccess.READ_ONLY
             }
-
 
             valueBox.styleClass.removeAll("c-hidden")
             value.text = item.displayValue

@@ -3,10 +3,7 @@
 <?import javafx.scene.control.*?>
 <?import javafx.scene.layout.*?>
 
-<fx:root xmlns="http://javafx.com/javafx/11.0.2" xmlns:fx="http://javafx.com/fxml/1"
-         prefHeight="22.0" prefWidth="53.0" stylesheets="@confedit.css"
-         type="javafx.scene.control.TreeCell"
-         fx:controller="com.smx.yapt.ConfigTreeCell">
+<fx:root prefHeight="22.0" prefWidth="53.0" stylesheets="@confedit.css" type="javafx.scene.control.TreeCell" xmlns="http://javafx.com/javafx/11.0.2" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.smx.yapt.ConfigTreeCell">
     <graphic>
         <GridPane>
             <columnConstraints>
@@ -20,8 +17,8 @@
                 <Label fx:id="name" GridPane.halignment="LEFT" />
             <HBox fx:id="valueBox" prefHeight="100.0" prefWidth="200.0" GridPane.columnIndex="1">
                <children>
-                      <TextField fx:id="value" />
-                  <Button fx:id="updateValue" mnemonicParsing="false" text="Set" onAction="#onUpdateValue"/>
+                  <TextField fx:id="value" />
+                  <Button fx:id="updateValue" mnemonicParsing="false" onAction="#onUpdateValue" text="Set" />
                </children>
             </HBox>
             </children>
