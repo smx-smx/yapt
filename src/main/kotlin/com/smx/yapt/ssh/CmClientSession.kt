@@ -1,7 +1,7 @@
 package com.smx.yapt.ssh
 
 import com.smx.yapt.CmModelTree
-import com.smx.yapt.common.IntRangeEx.Companion.exclusive
+import com.smx.yapt.CmNode
 import java.nio.charset.StandardCharsets
 import java.util.regex.Pattern
 
@@ -10,12 +10,54 @@ enum class CmAccess(val str:String) {
     READ_WRITE("rw");
 
     companion object {
-        fun fromString(value: String): CmAccess? {
+        fun parse(value: String): CmAccess? {
             return when(value){
                 READ_ONLY.str -> READ_ONLY
                 READ_WRITE.str -> READ_WRITE
                 else -> null
             }
+        }
+    }
+}
+
+class CmStringType(parts:List<String>){
+    val minLength: Int?
+    val maxLength: Int?
+
+    init {
+        val lengthSpec = parts.getOrNull(1)?.split(Pattern.quote(".."))
+        if(lengthSpec != null && lengthSpec.size >= 2){
+            minLength = lengthSpec[0].toInt()
+            maxLength = lengthSpec[1].toInt()
+        } else {
+            minLength = null
+            maxLength = null
+        }
+    }
+}
+
+abstract class CmType<T>(var value:T, props:CmModelProperties) {
+
+}
+
+class CmListBounds(val minElements:Int, val maxElements:Int){
+    companion object {
+        fun parse(parts: List<String>): CmListBounds {
+            val bounds = parts.first().split(Pattern.quote(".."))
+            val minElements = bounds[0].toInt()
+            val maxElements = bounds[1].toInt()
+            return CmListBounds(minElements, maxElements)
+        }
+    }
+}
+
+class CmTypeSpecifier(val typeName: String, val args: List<String>){
+    companion object {
+        fun parse(parts: List<String>): CmTypeSpecifier {
+            val typeName = parts.first()
+            val args = parts.drop(1)
+
+            return CmTypeSpecifier(typeName, args)
         }
     }
 }
@@ -28,31 +70,28 @@ enum class CmTypeId(val str:String){
     STRING("string"),
     ALIAS("Alias"),
     OPAQUE("?"),
+    NAME("Name"),
+    MACADDR("MACAddress"),
+    IPADDR("IPAddress"),
+    IP4ADDR("IPv4Address"),
+    USERPERMS("UserPermission"),
     DATETIME("dateTime");
 
     companion object {
         fun fromString(value: String): CmTypeId? {
             return when (value) {
+                ALIAS.str -> ALIAS
                 BOOLEAN.str -> BOOLEAN
                 INT.str -> INT
                 UINT.str -> UINT
                 LONG.str -> LONG
                 STRING.str -> STRING
                 DATETIME.str -> DATETIME
+                OPAQUE.str -> OPAQUE
                 else -> null
             }
         }
     }
-}
-
-class CmType {
-    val typeId: CmTypeId
-
-    constructor(parts: List<String>){
-        val typeName = parts[0]
-        typeId = CmTypeId.fromString(typeName) ?: throw IllegalArgumentException("Unknown type $typeName")
-    }
-
 }
 
 typealias CmAttributeValues = List<List<String>>
@@ -60,7 +99,7 @@ typealias CmPropertyAttributes = Map<String, CmAttributeValues>
 
 typealias CmObjectProperty = Map.Entry<String, CmPropertyAttributes>
 typealias CmObjectProperties = Map<String, CmPropertyAttributes>
-typealias CmMutableObjectProperties = MutableMap<String, CmPropertyAttributes>
+typealias CmNodeToAttributesMap = MutableMap<String, CmPropertyAttributes>
 
 class CmModelProperties(private val items:CmPropertyAttributes){
     operator fun get(key: String) = items[key]
@@ -68,10 +107,21 @@ class CmModelProperties(private val items:CmPropertyAttributes){
     private fun getItem(key: String, index: Int) = items[key]?.get(index)
 
     val access: CmAccess? by lazy {
-        getItem("access", 0)?.get(0)?.let { CmAccess.fromString(it) }
+        getItem("access", 0)?.get(0)?.let { CmAccess.parse(it) }
     }
-    val type: CmType? by lazy {
-        getItem("type", 0)?.let { CmType(it) }
+    val type: CmTypeSpecifier? by lazy {
+        getItem("type", 0)?.let { CmTypeSpecifier.parse(it) }
+    }
+
+    val enumValues = items["enum"]
+    val defaultValue = items["default"]
+
+    val isList = getItem("list", 0) != null
+    val isEnum = enumValues != null
+
+    val listBounds by lazy {
+        val listSpec = getItem("list", 0)?: return@lazy null
+        CmListBounds.parse(listSpec)
     }
 }
 
@@ -131,7 +181,7 @@ class CmClientSession(private val session: YapsSession) : AutoCloseable {
          *  ...
          * }
          */
-        val props:CmMutableObjectProperties = mutableMapOf()
+        val nodes:CmNodeToAttributesMap = mutableMapOf()
 
         val m = modelParser.matcher(output)
         while(m.find()){
@@ -160,10 +210,16 @@ class CmClientSession(private val session: YapsSession) : AutoCloseable {
                     it.value.map { pair -> pair.second }
                 }
 
-            props[key] = attrs
+            nodes[key] = attrs
         }
 
-        return CmModelTree(props)
+        val objs = nodes
+            .map { (path, props) ->
+                Pair(path, CmNode(this, path, CmModelProperties(props)))
+            }
+            .associate { it }
+
+        return CmModelTree(objs)
     }
 
     private fun extractMap(output: String): HashMap<String, String> {

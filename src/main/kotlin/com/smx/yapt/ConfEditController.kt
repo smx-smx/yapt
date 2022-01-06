@@ -1,5 +1,7 @@
 package com.smx.yapt
 
+import com.smx.yapt.common.resettableLazy
+import com.smx.yapt.common.resettableManager
 import com.smx.yapt.services.YapsSessionManager
 import com.smx.yapt.ssh.*
 import javafx.application.Platform
@@ -19,9 +21,7 @@ import kotlin.concurrent.thread
 
 typealias DomLevel = HashMap<String, Any>
 
-data class CmModelEntry(val path: String, val props: CmModelProperties){
-    constructor(path:String, props: CmPropertyAttributes) : this(path, CmModelProperties(props))
-
+data class CmModelEntry(val path: String, val node: CmNode){
     val fullName: String get() = path.trimEnd('.')
     val baseName: String get(){
         val tmp = fullName
@@ -39,21 +39,18 @@ data class CmModelEntry(val path: String, val props: CmModelProperties){
 typealias CmModelTreeNode = MutableMap.MutableEntry<String, CmModelEntryList>
 typealias CmModelEntryList = List<List<String>>
 
-class CmModelTree(val items:CmMutableObjectProperties) {
-    operator fun get(key: String): CmModelProperties? = items[key]?.let { CmModelProperties(it) } ?: null
-    operator fun set(key: String, value: CmPropertyAttributes){
-        items[key] = value
-    }
+class CmModelTree(val items:Map<String, CmNode>) {
+    operator fun get(key: String): CmModelProperties? = items[key]?.props
 
     val isLeaf get() = items.none { it.key.endsWith(".") }
     val objects get() = items.filter { it.key.endsWith(".") }
     val properties get() = items.filter { !it.key.endsWith(".") }
 
     private fun filterByDepth(
-        items: CmObjectProperties,
+        items: Map<String, CmNode>,
         root: String,
         depth: Int = 0
-    ): List<CmObjectProperty> {
+    ): List<Map.Entry<String, CmNode>> {
         val wantedNumDots = depth + 1
         return items
             .filter { it.key.indexOf(root) == 0}
@@ -76,28 +73,92 @@ class CmModelTree(val items:CmMutableObjectProperties) {
             .map { (_, e) -> e }
     }
 
-    fun getObjects(root: String, depth: Int = 0) : List<CmObjectProperty> {
-        return filterByDepth(properties, root, depth)
+    fun getObjects(root: String, depth: Int = 0) : List<Map.Entry<String, CmNode>> {
+        return filterByDepth(objects, root, depth)
     }
 
-    fun getProperties(root:String, depth:Int = 0): List<CmObjectProperty> {
+    fun getProperties(root:String, depth:Int = 0): List<Map.Entry<String, CmNode>> {
         return filterByDepth(properties, root, depth)
     }
 }
 
-class CmModelObject {
-    companion object {
-        fun parse(str: String): Any? {
-            val parts = str.split(':')
-            return when(parts.firstOrNull()){
-                "access" -> CmAccess.fromString(parts[1])
-                "type" -> CmType(parts)
-                null -> null
-                else -> parts
+interface CmValueFactory<T> {
+    fun parse(data: String): T
+}
+
+data class CmNode (
+    private val cm:CmClientSession,
+    val path: String,
+    val props: CmModelProperties
+) {
+    val fullName: String get() = path.trimEnd('.')
+    val baseName: String get(){
+        val tmp = fullName
+        val lastDot = tmp.lastIndexOf('.')
+        return if(lastDot == -1)
+            tmp
+        else
+            tmp.substring(lastDot + 1)
+    }
+
+    val isObject: Boolean get() = path.endsWith('.')
+    val isProperty: Boolean get() = !path.endsWith('.')
+
+    val lazymgr = resettableManager()
+
+    private val valueParser by lazy {
+        val isObject = props.type == null
+        if(isObject) null
+
+        val parser = when(props.type?.typeName){
+            CmTypeId.STRING.str -> object:CmValueFactory<String> {
+                override fun parse(data: String): String {
+                    return data
+                }
             }
+            CmTypeId.INT.str -> object:CmValueFactory<Int> {
+                override fun parse(data: String): Int {
+                    return data.toInt()
+                }
+            }
+            CmTypeId.LONG.str -> object:CmValueFactory<Long>{
+                override fun parse(data: String): Long {
+                    return data.toLong()
+                }
+            }
+            CmTypeId.UINT.str -> object:CmValueFactory<UInt>{
+                override fun parse(data: String): UInt {
+                    return data.toUInt()
+                }
+            }
+            CmTypeId.BOOLEAN.str -> object:CmValueFactory<Boolean>{
+                override fun parse(data: String): Boolean {
+                    return data == "true"
+                }
+            }
+            else -> null
+        }
+
+        parser
+    }
+
+    fun getValue() : Any {
+        val parser = valueParser ?: throw NotImplementedError()
+
+        val isList = props.isList
+        val values = cm.getValue(path)
+
+        return if(isList){
+            values
+                .map { parser.parse(it) }
+                .toList()
+                .toTypedArray()
+        } else {
+            values.first().let { parser.parse(it) }
         }
     }
 }
+
 
 data class ConfigCellViewModel(
     val displayName: String?,
@@ -164,7 +225,7 @@ class ConfigTreeCell(private val sessMan:YapsSessionManager) : TreeCell<ConfigCe
         } else {
             if(item.modelEntry != null){
                 val me = item.modelEntry
-                valueBox.isDisable = me.props.access == CmAccess.READ_ONLY
+                valueBox.isDisable = me.node.props.access == CmAccess.READ_ONLY
             }
 
             valueBox.styleClass.removeAll("c-hidden")
