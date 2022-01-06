@@ -19,9 +19,10 @@ import kotlin.concurrent.thread
 
 typealias DomLevel = HashMap<String, Any>
 
-data class CmModelItem(val path: String, val model: CmModel){
-    val fullName: String get() = path.trimEnd('.')
+data class CmModelEntry(val path: String, val props: CmModelProperties){
+    constructor(path:String, props: CmPropertyAttributes) : this(path, CmModelProperties(props))
 
+    val fullName: String get() = path.trimEnd('.')
     val baseName: String get(){
         val tmp = fullName
         val lastDot = tmp.lastIndexOf('.')
@@ -31,30 +32,28 @@ data class CmModelItem(val path: String, val model: CmModel){
             tmp.substring(lastDot + 1)
     }
 
-    val access: CmAccess? get() = model["access"]?.let { CmAccess.fromString(it) }
-    val type: CmType? get() = model["type"]?.let { CmType.fromString(it) }
-
     val isObject: Boolean get() = path.endsWith('.')
     val isProperty: Boolean get() = !path.endsWith('.')
 }
 
-typealias CmModelTreeNode = MutableMap.MutableEntry<String, CmModel>
+typealias CmModelTreeNode = MutableMap.MutableEntry<String, CmModelEntryList>
+typealias CmModelEntryList = List<List<String>>
 
-class CmModelTree(val items:HashMap<String, CmModel> = HashMap()) {
-    operator fun get(key: String) = items[key]
-    operator fun set(key: String, value: CmModel){
+class CmModelTree(val items:CmMutableObjectProperties) {
+    operator fun get(key: String): CmModelProperties? = items[key]?.let { CmModelProperties(it) } ?: null
+    operator fun set(key: String, value: CmPropertyAttributes){
         items[key] = value
     }
 
     val isLeaf get() = items.none { it.key.endsWith(".") }
-    val objects get() = items.entries.filter { it.key.endsWith(".") }
-    val properties get() = items.entries.filter { !it.key.endsWith(".") }
+    val objects get() = items.filter { it.key.endsWith(".") }
+    val properties get() = items.filter { !it.key.endsWith(".") }
 
     private fun filterByDepth(
-        items: List<CmModelTreeNode>,
+        items: CmObjectProperties,
         root: String,
         depth: Int = 0
-    ): List<CmModelTreeNode> {
+    ): List<CmObjectProperty> {
         val wantedNumDots = depth + 1
         return items
             .filter { it.key.indexOf(root) == 0}
@@ -77,19 +76,33 @@ class CmModelTree(val items:HashMap<String, CmModel> = HashMap()) {
             .map { (_, e) -> e }
     }
 
-    fun getObjects(root: String, depth: Int = 0) : List<CmModelTreeNode> {
+    fun getObjects(root: String, depth: Int = 0) : List<CmObjectProperty> {
         return filterByDepth(properties, root, depth)
     }
 
-    fun getProperties(root:String, depth:Int = 0): List<CmModelTreeNode> {
+    fun getProperties(root:String, depth:Int = 0): List<CmObjectProperty> {
         return filterByDepth(properties, root, depth)
+    }
+}
+
+class CmModelObject {
+    companion object {
+        fun parse(str: String): Any? {
+            val parts = str.split(':')
+            return when(parts.firstOrNull()){
+                "access" -> CmAccess.fromString(parts[1])
+                "type" -> CmType(parts)
+                null -> null
+                else -> parts
+            }
+        }
     }
 }
 
 data class ConfigCellViewModel(
     val displayName: String?,
     val displayValue: String?,
-    val modelItem: CmModelItem?
+    val modelEntry: CmModelEntry?
 ){
     //val isObject:Boolean get()
 
@@ -149,9 +162,9 @@ class ConfigTreeCell(private val sessMan:YapsSessionManager) : TreeCell<ConfigCe
         if(item.displayValue == null){
             valueBox.styleClass.putIfAbsent("c-hidden")
         } else {
-            if(item.modelItem != null){
-                val m = item.modelItem
-                valueBox.isDisable = m.access == CmAccess.READ_ONLY
+            if(item.modelEntry != null){
+                val me = item.modelEntry
+                valueBox.isDisable = me.props.access == CmAccess.READ_ONLY
             }
 
             valueBox.styleClass.removeAll("c-hidden")
@@ -182,15 +195,16 @@ class ConfigTreeCell(private val sessMan:YapsSessionManager) : TreeCell<ConfigCe
                         println("GETMDP $rootNodePath")
                         item.value.childrenModel = cm.getModelForParams("${rootNodePath}.", 0)
                     }
+
                     val model = item.value.childrenModel ?: return@thread
 
                     // fetch all properties (skip objects)
                     val nodes = model
                         .getProperties(rootNodePath, 0)
-                        .map { (k, m) ->
-                            println("$k -> $m")
+                        .map { (k, props) ->
+                            println("$k -> $props")
 
-                            val modelItem = CmModelItem(k, m)
+                            val modelItem = CmModelEntry(k, props)
                             val item = cm.get(k).entries.first()
                                 .let { ConfigCellViewModel(modelItem.baseName, it.value, modelItem) }
                                 .let { TreeItem(it) }
@@ -205,7 +219,7 @@ class ConfigTreeCell(private val sessMan:YapsSessionManager) : TreeCell<ConfigCe
                             .filter {
                                 val isDummy = it.value.displayName == null
                                 // remove if property or dummy node
-                                it.value.modelItem?.isProperty ?: isDummy
+                                it.value.modelEntry?.isProperty ?: isDummy
                             }
                             .let { item.children.removeAll(it) }
                         // add new nodes

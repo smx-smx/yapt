@@ -1,6 +1,7 @@
 package com.smx.yapt.ssh
 
 import com.smx.yapt.CmModelTree
+import com.smx.yapt.common.IntRangeEx.Companion.exclusive
 import java.nio.charset.StandardCharsets
 import java.util.regex.Pattern
 
@@ -19,7 +20,7 @@ enum class CmAccess(val str:String) {
     }
 }
 
-enum class CmType(val str:String){
+enum class CmTypeId(val str:String){
     BOOLEAN("boolean"),
     INT("int"),
     UINT("unsignedInt"),
@@ -30,7 +31,7 @@ enum class CmType(val str:String){
     DATETIME("dateTime");
 
     companion object {
-        fun fromString(value: String): CmType? {
+        fun fromString(value: String): CmTypeId? {
             return when (value) {
                 BOOLEAN.str -> BOOLEAN
                 INT.str -> INT
@@ -44,8 +45,34 @@ enum class CmType(val str:String){
     }
 }
 
-class CmModel(val items:HashMap<String, String?> = HashMap()){
+class CmType {
+    val typeId: CmTypeId
+
+    constructor(parts: List<String>){
+        val typeName = parts[0]
+        typeId = CmTypeId.fromString(typeName) ?: throw IllegalArgumentException("Unknown type $typeName")
+    }
+
+}
+
+typealias CmAttributeValues = List<List<String>>
+typealias CmPropertyAttributes = Map<String, CmAttributeValues>
+
+typealias CmObjectProperty = Map.Entry<String, CmPropertyAttributes>
+typealias CmObjectProperties = Map<String, CmPropertyAttributes>
+typealias CmMutableObjectProperties = MutableMap<String, CmPropertyAttributes>
+
+class CmModelProperties(private val items:CmPropertyAttributes){
     operator fun get(key: String) = items[key]
+
+    private fun getItem(key: String, index: Int) = items[key]?.get(index)
+
+    val access: CmAccess? by lazy {
+        getItem("access", 0)?.get(0)?.let { CmAccess.fromString(it) }
+    }
+    val type: CmType? by lazy {
+        getItem("type", 0)?.let { CmType(it) }
+    }
 }
 
 class CmClientSession(private val session: YapsSession) : AutoCloseable {
@@ -96,33 +123,47 @@ class CmClientSession(private val session: YapsSession) : AutoCloseable {
     }
 
     private fun extractModelDef(output: String): CmModelTree {
-        val r = CmModelTree()
+        /**
+         * key: "Device.DNS.Client.Status"
+         * value: {
+         *  "access": ["ro"]
+         *  "type": ["string"]
+         *  ...
+         * }
+         */
+        val props:CmMutableObjectProperties = mutableMapOf()
 
         val m = modelParser.matcher(output)
         while(m.find()){
+            // the property path
             val key = m.group(1)
-            val model = CmModel()
-            m.group(2)
+            // attributes (key -> values)
+            val attrs = m.group(2)
+                // remove tabs
                 .replace("\t", "").trimEnd()
                 .lines()
+                // convert to [k, params...]
                 .map { it.split(':') }
+                // keep non empty
                 .filter { it.isNotEmpty() }
-                .associateTo(model.items) {
-                    when(it.size){
-                        // foo
-                        1 -> Pair(it[0], null)
-                        // FIXME: this doesn't handle multiple attributes correctly
-                        // e.g.
-                        // type:string:size:0..256
-                        // pathref:targetType:6
-                        else -> Pair(it[0], it[1])
-                    }
+                // convert [k, params...] to Pair(k, [params...])
+                .map { Pair(it[0], it.subList(1, it.size)) }
+                // group by key (e.g. "access")
+                .groupBy { it.first }
+                // now we have a list of pairs
+                // e.g. "access" -> [
+                // Pair<"access", [params...]>,
+                // Pair<"access", [params...]>
+                //  ]
+                // we need to keep Pair.second only
+                .mapValues {
+                    it.value.map { pair -> pair.second }
                 }
 
-            r[key] = model
+            props[key] = attrs
         }
 
-        return r
+        return CmModelTree(props)
     }
 
     private fun extractMap(output: String): HashMap<String, String> {
