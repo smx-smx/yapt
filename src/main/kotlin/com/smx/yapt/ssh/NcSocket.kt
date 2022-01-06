@@ -21,6 +21,8 @@ class NcSocket(
     }
 
     override fun close() {
+        // send SIGINT
+        cmd.sendSignal("2")
         cmd.disconnect()
     }
 }
