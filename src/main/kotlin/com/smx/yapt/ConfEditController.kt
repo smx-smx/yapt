@@ -6,10 +6,13 @@ import com.smx.yapt.ssh.*
 import javafx.application.Platform
 import javafx.beans.value.ChangeListener
 import javafx.event.ActionEvent
+import javafx.event.EventHandler
 import javafx.fxml.FXML
 import javafx.fxml.FXMLLoader
 import javafx.fxml.Initializable
 import javafx.scene.control.*
+import javafx.scene.input.Clipboard
+import javafx.scene.input.ClipboardContent
 import javafx.scene.layout.HBox
 import javafx.util.Callback
 import java.net.URL
@@ -124,7 +127,7 @@ data class CmNode (
     }
 
     fun getValue() : Any {
-        val parser = valueParser ?: throw NotImplementedError()
+        val parser = valueParser ?: throw NotImplementedError("no valueparser for ${props.type?.typeName}")
 
         val isList = props.isList
         val values = cm.getValue(path)
@@ -216,7 +219,26 @@ class ConfigTreeCell(private val sessMan:YapsSessionManager) : TreeCell<ConfigCe
         contentDisplay = ContentDisplay.GRAPHIC_ONLY
     }
 
+    private fun createContextMenu(): ContextMenu {
+        val cell = this
+        val copyPathMenuItem = MenuItem("Copy Path").apply {
+            onAction = EventHandler { event ->
+                val nodePath = cell.getNodePath(cell.treeItem)
+                val clip = Clipboard.getSystemClipboard()
+                val content = ClipboardContent().apply {
+                    putString(nodePath)
+                }
+                clip.setContent(content)
+            }
+        }
+
+        return ContextMenu().apply {
+            items.add(copyPathMenuItem)
+        }
+    }
+
     override fun initialize(location: URL?, resources: ResourceBundle?) {
+        contextMenu = createContextMenu()
         treeItemProperty().addListener { _, prevItem, item ->
             if(item == null || prevItem == item || item.value.expandListener != null) {
                 return@addListener
@@ -249,6 +271,13 @@ class ConfigTreeCell(private val sessMan:YapsSessionManager) : TreeCell<ConfigCe
                             val item = cm.get(k).entries.first()
                                 .let { ConfigCellViewModel(node.baseName, it.value, node) }
                                 .let { TreeItem(it) }
+
+                            /*
+                            // WIP: dynamic controls (node.getValue() returns a dynamic object)
+                            val item = TreeItem(
+                                ConfigCellViewModel(node.baseName, node.getValue().toString(), node)
+                            )
+                             */
 
                             item
                         }
