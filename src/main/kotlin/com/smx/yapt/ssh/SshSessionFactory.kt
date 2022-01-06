@@ -110,6 +110,7 @@ class YapsSession(private val session: Session) : IYapsSession, AutoCloseable {
     }
 
     override fun close() {
+        cm.close()
         session.disconnect()
     }
 

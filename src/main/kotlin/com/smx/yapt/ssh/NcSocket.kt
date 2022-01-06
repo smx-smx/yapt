@@ -16,13 +16,13 @@ class NcSocket(
 
     init {
         cmd.outputStream = buf
-        cmd.setCommand("nc $host $port")
+        cmd.setCommand("exec nc $host $port")
         cmd.connect()
     }
 
     override fun close() {
         // send SIGINT
-        cmd.sendSignal("2")
+        cmd.sendSignal("INT")
         cmd.disconnect()
     }
 }
