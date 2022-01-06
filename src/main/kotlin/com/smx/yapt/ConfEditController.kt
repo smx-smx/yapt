@@ -1,6 +1,5 @@
 package com.smx.yapt
 
-import com.smx.yapt.common.resettableLazy
 import com.smx.yapt.common.resettableManager
 import com.smx.yapt.services.YapsSessionManager
 import com.smx.yapt.ssh.*
@@ -20,24 +19,6 @@ import kotlin.collections.HashMap
 import kotlin.concurrent.thread
 
 typealias DomLevel = HashMap<String, Any>
-
-data class CmModelEntry(val path: String, val node: CmNode){
-    val fullName: String get() = path.trimEnd('.')
-    val baseName: String get(){
-        val tmp = fullName
-        val lastDot = tmp.lastIndexOf('.')
-        return if(lastDot == -1)
-            tmp
-        else
-            tmp.substring(lastDot + 1)
-    }
-
-    val isObject: Boolean get() = path.endsWith('.')
-    val isProperty: Boolean get() = !path.endsWith('.')
-}
-
-typealias CmModelTreeNode = MutableMap.MutableEntry<String, CmModelEntryList>
-typealias CmModelEntryList = List<List<String>>
 
 class CmModelTree(val items:Map<String, CmNode>) {
     operator fun get(key: String): CmModelProperties? = items[key]?.props
@@ -163,7 +144,7 @@ data class CmNode (
 data class ConfigCellViewModel(
     val displayName: String?,
     val displayValue: String?,
-    val modelEntry: CmModelEntry?
+    val node: CmNode?
 ){
     //val isObject:Boolean get()
 
@@ -223,9 +204,9 @@ class ConfigTreeCell(private val sessMan:YapsSessionManager) : TreeCell<ConfigCe
         if(item.displayValue == null){
             valueBox.styleClass.putIfAbsent("c-hidden")
         } else {
-            if(item.modelEntry != null){
-                val me = item.modelEntry
-                valueBox.isDisable = me.node.props.access == CmAccess.READ_ONLY
+            if(item.node != null){
+                val node = item.node
+                valueBox.isDisable = node.props.access == CmAccess.READ_ONLY
             }
 
             valueBox.styleClass.removeAll("c-hidden")
@@ -262,12 +243,11 @@ class ConfigTreeCell(private val sessMan:YapsSessionManager) : TreeCell<ConfigCe
                     // fetch all properties (skip objects)
                     val nodes = model
                         .getProperties(rootNodePath, 0)
-                        .map { (k, props) ->
-                            println("$k -> $props")
+                        .map { (k, node) ->
+                            println("$k -> $node")
 
-                            val modelItem = CmModelEntry(k, props)
                             val item = cm.get(k).entries.first()
-                                .let { ConfigCellViewModel(modelItem.baseName, it.value, modelItem) }
+                                .let { ConfigCellViewModel(node.baseName, it.value, node) }
                                 .let { TreeItem(it) }
 
                             item
@@ -280,7 +260,7 @@ class ConfigTreeCell(private val sessMan:YapsSessionManager) : TreeCell<ConfigCe
                             .filter {
                                 val isDummy = it.value.displayName == null
                                 // remove if property or dummy node
-                                it.value.modelEntry?.isProperty ?: isDummy
+                                it.value.node?.isProperty ?: isDummy
                             }
                             .let { item.children.removeAll(it) }
                         // add new nodes
