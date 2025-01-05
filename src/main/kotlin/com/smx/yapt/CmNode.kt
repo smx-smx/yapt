@@ -43,17 +43,22 @@ data class CmNode (
             }
             CmTypeId.INT.str -> object: CmValueFactory<Int> {
                 override fun parse(data: String): Int {
-                    return data.toInt()
-                }
-            }
-            CmTypeId.LONG.str -> object: CmValueFactory<Long> {
-                override fun parse(data: String): Long {
-                    return data.toLong()
+                    return if(data.isBlank()) 0 else data.toInt()
                 }
             }
             CmTypeId.UINT.str -> object: CmValueFactory<UInt> {
                 override fun parse(data: String): UInt {
-                    return data.toUInt()
+                    return if(data.isBlank()) 0u else data.toUInt()
+                }
+            }
+            CmTypeId.LONG.str -> object: CmValueFactory<Long> {
+                override fun parse(data: String): Long {
+                    return if(data.isBlank()) 0 else data.toLong()
+                }
+            }
+            CmTypeId.ULONG.str -> object: CmValueFactory<ULong> {
+                override fun parse(data: String): ULong {
+                    return if(data.isBlank()) 0u else data.toULong()
                 }
             }
             CmTypeId.BOOLEAN.str -> object: CmValueFactory<Boolean> {

@@ -67,6 +67,7 @@ enum class CmTypeId(val str:String){
     INT("int"),
     UINT("unsignedInt"),
     LONG("long"),
+    ULONG("unsignedLong"),
     STRING("string"),
     ALIAS("Alias"),
     OPAQUE("?"),
@@ -80,14 +81,20 @@ enum class CmTypeId(val str:String){
     companion object {
         fun fromString(value: String): CmTypeId? {
             return when (value) {
-                ALIAS.str -> ALIAS
                 BOOLEAN.str -> BOOLEAN
                 INT.str -> INT
                 UINT.str -> UINT
                 LONG.str -> LONG
+                ULONG.str -> ULONG
                 STRING.str -> STRING
-                DATETIME.str -> DATETIME
+                ALIAS.str -> ALIAS
                 OPAQUE.str -> OPAQUE
+                NAME.str -> NAME
+                MACADDR.str -> MACADDR
+                IPADDR.str -> IPADDR
+                IP4ADDR.str -> IP4ADDR
+                USERPERMS.str -> USERPERMS
+                DATETIME.str -> DATETIME
                 else -> null
             }
         }

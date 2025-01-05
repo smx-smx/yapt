@@ -67,7 +67,7 @@ class ConfigTreeCell(private val sessMan: YapsSessionManager) : TreeCell<ConfigC
             is Boolean -> {
                 CheckBox("").also { it.isSelected = value }
             }
-            is UInt, is Int -> {
+            is Int, is UInt, is Long, is ULong -> {
                 TextField("").also {
                     it.textFormatter = TextFormatter(NumberStringConverter())
                     it.text = value.toString()
