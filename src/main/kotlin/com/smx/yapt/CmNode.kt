@@ -3,6 +3,7 @@ package com.smx.yapt
 import com.smx.yapt.common.resettableManager
 import com.smx.yapt.ssh.CmClientSession
 import com.smx.yapt.ssh.CmModelProperties
+import com.smx.yapt.ssh.CmType
 import com.smx.yapt.ssh.CmTypeId
 
 data class CmNode (
@@ -30,6 +31,11 @@ data class CmNode (
         if(isObject) null
 
         val parser = when(props.type?.typeName){
+            /** $FIXME: implement more proper value parsers **/
+            CmTypeId.OPAQUE.str, CmTypeId.ALIAS.str,
+            CmTypeId.NAME.str, CmTypeId.USERPERMS.str,
+            CmTypeId.DATETIME.str, CmTypeId.IPADDR.str,
+            CmTypeId.MACADDR.str, CmTypeId.IPADDR.str, CmTypeId.IP4ADDR.str,
             CmTypeId.STRING.str -> object: CmValueFactory<String> {
                 override fun parse(data: String): String {
                     return data
@@ -62,7 +68,7 @@ data class CmNode (
     }
 
     fun getValue() : Any {
-        val parser = valueParser ?: throw NotImplementedError("no valueparser for ${props.type?.typeName}")
+        val parser = valueParser ?: throw NotImplementedError("no valueparser for type '${props.type?.typeName}'")
 
         val isList = props.isList
         val values = cm.getValue(path)
@@ -71,7 +77,6 @@ data class CmNode (
             values
                 .map { parser.parse(it) }
                 .toList()
-                .toTypedArray()
         } else {
             values.first().let { parser.parse(it) }
         }

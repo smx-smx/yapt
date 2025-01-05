@@ -17,7 +17,8 @@
                 <Label fx:id="name" GridPane.halignment="LEFT" />
             <HBox fx:id="valueBox" prefHeight="100.0" prefWidth="200.0" GridPane.columnIndex="1">
                <children>
-                  <TextField fx:id="value" />
+                  <!--<TextField fx:id="value" />-->
+                   <Pane fx:id="valueContainer" />
                   <Button fx:id="updateValue" mnemonicParsing="false" onAction="#onUpdateValue" text="Set" />
                </children>
             </HBox>

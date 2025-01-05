@@ -13,6 +13,8 @@ import javafx.scene.control.*
 import javafx.scene.input.Clipboard
 import javafx.scene.input.ClipboardContent
 import javafx.scene.layout.HBox
+import javafx.scene.layout.Pane
+import javafx.util.converter.NumberStringConverter
 import java.net.URL
 import java.util.*
 import kotlin.concurrent.thread
@@ -25,10 +27,10 @@ class ConfigTreeCell(private val sessMan: YapsSessionManager) : TreeCell<ConfigC
     lateinit var valueBox: HBox
 
     @FXML
-    lateinit var value: TextField
+    lateinit var updateValue: Button
 
     @FXML
-    lateinit var updateValue: Button
+    lateinit var valueContainer: Pane
 
     private val cm get() = sessMan.currentSession.cm
 
@@ -45,11 +47,52 @@ class ConfigTreeCell(private val sessMan: YapsSessionManager) : TreeCell<ConfigC
         return hierarchy.asReversed().joinToString(".")
     }
 
+    private fun getControlValue(control: Control): String {
+        return when(control){
+            is CheckBox -> if(control.isSelected) "true" else "false"
+            is TextField -> control.text
+            else -> throw NotImplementedError(control.javaClass.toString())
+        }
+    }
+
     fun onUpdateValue(ev: ActionEvent){
         val path = getNodePath(this.treeItem)
-        val value = value.text
+        val value = getControlValue(valueContainer.children.first() as Control)
         println("Set ${path} to \"${value}\"")
         cm.setValue(path, value)
+    }
+
+    private fun makeControl(value:Any) : Control {
+        return when(value){
+            is Boolean -> {
+                CheckBox("").also { it.isSelected = value }
+            }
+            is UInt, is Int -> {
+                TextField("").also {
+                    it.textFormatter = TextFormatter(NumberStringConverter())
+                    it.text = value.toString()
+                }
+            }
+            is String -> {
+                TextField("").also {
+                    it.text = value as String?
+                }
+            }
+            else -> throw NotImplementedError(value.javaClass.toString())
+        }
+    }
+
+    private fun makeControl(node: CmNode): Collection<Control> {
+        return when (val value = node.getValue()) {
+            is Collection<*> -> {
+                value
+                    .filterNotNull()
+                    .map { makeControl(it) }
+            }
+            else -> {
+                listOf(makeControl(value))
+            }
+        }
     }
 
     /**
@@ -75,7 +118,12 @@ class ConfigTreeCell(private val sessMan: YapsSessionManager) : TreeCell<ConfigC
             }
 
             valueBox.styleClass.removeAll("c-hidden")
-            value.text = item.displayValue
+
+            val values = makeControl(item.node ?: throw RuntimeException("node is null"))
+            this.valueContainer.children.apply {
+                clear()
+                addAll(values)
+            }
         }
 
         contentDisplay = ContentDisplay.GRAPHIC_ONLY
@@ -134,12 +182,10 @@ class ConfigTreeCell(private val sessMan: YapsSessionManager) : TreeCell<ConfigC
                                 .let { ConfigCellContext(node.baseName, it.value, node) }
                                 .let { TreeItem(it) }
 
-                            /*
                             // WIP: dynamic controls (node.getValue() returns a dynamic object)
-                            val item = TreeItem(
+                            /*val item = TreeItem(
                                 ConfigCellViewModel(node.baseName, node.getValue().toString(), node)
-                            )
-                             */
+                            )*/
 
                             item
                         }
