@@ -19,7 +19,7 @@
                <children>
                   <!--<TextField fx:id="value" />-->
                    <Pane fx:id="valueContainer" />
-                  <Button fx:id="updateValue" mnemonicParsing="false" onAction="#onUpdateValue" text="Set" />
+                   <Button fx:id="updateValue" mnemonicParsing="false" onAction="#onUpdateValue" text="Set" />
                </children>
             </HBox>
             </children>

@@ -41,9 +41,9 @@ class ConfEditController : Initializable {
         val fxmlResource = javaClass.getResource("config_node.fxml")
         tree.cellFactory = Callback { _ ->
             val obj = FXMLLoader(fxmlResource).also {
-                val root = ConfigTreeCell(sessMan)
-                it.setRoot(root)
-                it.controllerFactory = Callback { root }
+                val cell = ConfigTreeCell(sessMan)
+                it.setRoot(cell)
+                it.controllerFactory = Callback { cell }
             }.load<ConfigTreeCell>()
             obj
         }

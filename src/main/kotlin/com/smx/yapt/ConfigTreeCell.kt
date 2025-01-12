@@ -14,7 +14,6 @@ import javafx.scene.input.Clipboard
 import javafx.scene.input.ClipboardContent
 import javafx.scene.layout.HBox
 import javafx.scene.layout.Pane
-import javafx.util.converter.NumberStringConverter
 import java.net.URL
 import java.util.*
 import kotlin.concurrent.thread
@@ -62,38 +61,7 @@ class ConfigTreeCell(private val sessMan: YapsSessionManager) : TreeCell<ConfigC
         cm.setValue(path, value)
     }
 
-    private fun makeControl(value:Any) : Control {
-        return when(value){
-            is Boolean -> {
-                CheckBox("").also { it.isSelected = value }
-            }
-            is Int, is UInt, is Long, is ULong -> {
-                TextField("").also {
-                    it.textFormatter = TextFormatter(NumberStringConverter())
-                    it.text = value.toString()
-                }
-            }
-            is String -> {
-                TextField("").also {
-                    it.text = value as String?
-                }
-            }
-            else -> throw NotImplementedError(value.javaClass.toString())
-        }
-    }
 
-    private fun makeControl(node: CmNode): Collection<Control> {
-        return when (val value = node.getValue()) {
-            is Collection<*> -> {
-                value
-                    .filterNotNull()
-                    .map { makeControl(it) }
-            }
-            else -> {
-                listOf(makeControl(value))
-            }
-        }
-    }
 
     /**
      * Render the Tree view model (in this case just a string)
@@ -101,32 +69,23 @@ class ConfigTreeCell(private val sessMan: YapsSessionManager) : TreeCell<ConfigC
     override fun updateItem(item: ConfigCellContext?, empty: Boolean) {
         super.updateItem(item, empty)
 
-        if(item == null || empty){
-            styleClass.putIfAbsent("c-hidden")
-            contentDisplay = ContentDisplay.TEXT_ONLY
-            return
-        }
-        styleClass.removeAll("c-hidden")
-
-        name.text = item.displayName
-        if(item.displayValue == null){
+        if(item == null || empty || item.displayName == null){
             valueBox.styleClass.putIfAbsent("c-hidden")
+            contentDisplay = ContentDisplay.TEXT_ONLY
         } else {
+            name.text = item.displayName
+            valueBox.styleClass.removeAll("c-hidden")
+
+            valueContainer.children.clear()
             if(item.node != null){
                 val node = item.node
                 valueBox.isDisable = node.props.access == CmAccess.READ_ONLY
+                valueContainer.children.addAll(item.controls)
             }
 
-            valueBox.styleClass.removeAll("c-hidden")
-
-            val values = makeControl(item.node ?: throw RuntimeException("node is null"))
-            this.valueContainer.children.apply {
-                clear()
-                addAll(values)
-            }
+            updateValue.isVisible = item.node != null && valueContainer.children.size > 0
+            contentDisplay = ContentDisplay.GRAPHIC_ONLY
         }
-
-        contentDisplay = ContentDisplay.GRAPHIC_ONLY
     }
 
     private fun createContextMenu(): ContextMenu {
@@ -149,6 +108,7 @@ class ConfigTreeCell(private val sessMan: YapsSessionManager) : TreeCell<ConfigC
 
     override fun initialize(location: URL?, resources: ResourceBundle?) {
         contextMenu = createContextMenu()
+        val parent = item
         treeItemProperty().addListener { _, prevItem, item ->
             if(item == null || prevItem == item || item.value.expandListener != null) {
                 return@addListener
@@ -160,50 +120,41 @@ class ConfigTreeCell(private val sessMan: YapsSessionManager) : TreeCell<ConfigC
                 if(previousState == expanding || !expanding) return@ChangeListener
                 // this node is being expanded, check for leaf children
 
-                thread {
-                    val rootNodePath = getNodePath(item)
+                val rootNodePath = getNodePath(item)
 
-                    // have we already fetched the model for this node?
-                    if (item.value.childrenModel == null) {
-                        // look for this child's descendants
-                        println("GETMDP $rootNodePath")
-                        item.value.childrenModel = cm.getModelForParams("${rootNodePath}.", 0)
-                    }
-
-                    val model = item.value.childrenModel ?: return@thread
-
-                    // fetch all properties (skip objects)
-                    val nodes = model
-                        .getProperties(rootNodePath, 0)
-                        .map { (k, node) ->
-                            println("$k -> $node")
-
-                            val item = cm.get(k).entries.first()
-                                .let { ConfigCellContext(node.baseName, it.value, node) }
-                                .let { TreeItem(it) }
-
-                            // WIP: dynamic controls (node.getValue() returns a dynamic object)
-                            /*val item = TreeItem(
-                                ConfigCellViewModel(node.baseName, node.getValue().toString(), node)
-                            )*/
-
-                            item
-                        }
-
-                    // remove and re-create property nodes
-                    Platform.runLater {
-                        // remove property nodes
-                        item.children
-                            .filter {
-                                val isDummy = it.value.displayName == null
-                                // remove if property or dummy node
-                                it.value.node?.isProperty ?: isDummy
-                            }
-                            .let { item.children.removeAll(it) }
-                        // add new nodes
-                        item.children.addAll(nodes)
-                    }
+                // have we already fetched the model for this node?
+                if (item.value.childrenModel == null) {
+                    // look for this child's descendants
+                    println("GETMDP $rootNodePath")
+                    item.value.childrenModel = cm.getModelForParams("${rootNodePath}.", 0)
                 }
+
+                val model = item.value.childrenModel
+
+                // create all properties (skip objects)
+                val nodes = model
+                    ?.getProperties(rootNodePath, 0)
+                    ?.map { (k, node) ->
+                        println("$k -> $node")
+
+                        val item = cm.get(k).entries.first()
+                            .let { ConfigCellContext(node.baseName, it.value, node) }
+                            .let { TreeItem(it) }
+
+                        item
+                    } ?: emptyList()
+
+                // remove old property nodes
+                item.children
+                    .filter {
+                        val isDummy = it.value.displayName == null
+                        // remove if property or dummy node
+                        it.value.node?.isProperty ?: isDummy
+                    }
+                    .let { item.children.removeAll(it) }
+
+                // add new nodes
+                item.children.addAll(nodes)
             }
             expandProp.addListener(item.value.expandListener)
         }
